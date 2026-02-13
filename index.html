@@ -1,0 +1,680 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>블랙 콤보카드 확률/비용 시뮬레이터</title>
+  <style>
+    :root { --gap: 12px; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans KR", Arial, sans-serif; margin: 0; background:#fafafa; color:#111; }
+    header { padding: 18px 20px; background:#111; color:#fff; }
+    main { padding: 18px 20px; max-width: 1100px; margin: 0 auto; }
+    .grid { display:grid; grid-template-columns: 1fr; gap: var(--gap); }
+    @media (min-width: 900px) { .grid { grid-template-columns: 1.2fr 0.8fr; } }
+    .card { background:#fff; border:1px solid #e7e7e7; border-radius: 12px; padding: 14px; box-shadow: 0 1px 2px rgba(0,0,0,.03); }
+    h2 { font-size: 16px; margin: 0 0 10px; }
+    h3 { font-size: 14px; margin: 14px 0 8px; }
+    .row { display:flex; gap:10px; flex-wrap: wrap; align-items: end; }
+    .field { display:flex; flex-direction: column; gap:6px; min-width: 140px; }
+    label { font-size: 12px; color:#333; }
+    input[type="number"], input[type="date"] { padding: 10px; border:1px solid #ddd; border-radius: 10px; font-size: 14px; }
+    input[type="checkbox"] { transform: scale(1.15); }
+    .opt-grid { display:grid; grid-template-columns: 1fr; gap: 10px; }
+    @media (min-width: 700px){ .opt-grid{ grid-template-columns: repeat(5, 1fr);} }
+    .opt { border:1px solid #eee; border-radius: 12px; padding: 10px; background:#fcfcfc; }
+    .opt b { display:block; margin-bottom: 6px; }
+    .actions { display:flex; gap:10px; flex-wrap: wrap; align-items:center; margin-top: 10px; }
+    button { padding: 10px 14px; border-radius: 10px; border:1px solid #111; background:#111; color:#fff; font-weight: 600; cursor: pointer; }
+    button.secondary { background:#fff; color:#111; }
+    button:disabled { opacity: .6; cursor:not-allowed; }
+    .muted { color:#666; font-size: 12px; line-height: 1.35; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    .kpi { display:grid; grid-template-columns: 1fr; gap:10px; }
+    @media (min-width: 700px) { .kpi { grid-template-columns: repeat(2, 1fr);} }
+    .kpi .box { border:1px solid #eee; border-radius: 12px; padding: 10px; background:#fff; }
+    .kpi .box .t { font-size: 12px; color:#555; }
+    .kpi .box .v { font-size: 18px; font-weight: 700; margin-top: 2px; }
+    progress { width: 100%; height: 14px; }
+    .warn { color:#b00020; font-size: 12px; }
+    details summary { cursor:pointer; }
+    .small { font-size: 12px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { border-bottom: 1px solid #eee; padding: 8px; text-align:left; }
+  </style>
+</head>
+<body>
+<header>
+  <div style="max-width:1100px;margin:0 auto;">
+    <div style="font-size:18px;font-weight:800;">블랙 콤보카드 확률/비용 시뮬레이터</div>
+  </div>
+</header>
+
+<main>
+  <div class="grid">
+
+    <section class="card">
+      <h2>1) 옵션/목표 입력</h2>
+
+      <div class="opt-grid" id="optGrid"></div>
+
+      <h3>2) 기간 / 포인트</h3>
+      <div class="row">
+        <div class="field">
+          <label>오늘(기준일)</label>
+          <input type="date" id="startDate" />
+        </div>
+        <div class="field">
+          <label>이벤트 종료일(포함)</label>
+          <input type="date" id="endDate" />
+        </div>
+        <div class="field">
+          <label>현재 보유 포인트</label>
+          <input type="number" id="startPoints" min="0" value="0" />
+        </div>
+        <div class="field">
+          <label>남겨야 할 포인트(최소 잔액)</label>
+          <input type="number" id="reservePoints" min="0" value="0" />
+        </div>
+      </div>
+      <div class="muted" style="margin-top:8px;">
+        - 매일 포인트 +90<br/>
+        - 포인트 리롤 1회 = 30 포인트 소모<br/>
+        - 금/토/일에는 포인트 소모 없는 “추가 무료 리롤” 1회 제공
+      </div>
+
+      <h3>3) 골드/스페셜 옵션 및 비용</h3>
+      <div class="row">
+        <div class="field" style="min-width: 220px;">
+          <label><input type="checkbox" id="useGold" checked /> 골드 리롤 사용</label>
+          <div class="muted">평일 2회, 금/토/일 +3회(총 5회)</div>
+        </div>
+        <div class="field" style="min-width: 220px;">
+          <label><input type="checkbox" id="useSpecial" checked /> 스페셜 리롤 사용 (min 보장)</label>
+          <div class="muted">평일 1회, 금/토/일 +2회(총 3회)</div>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:10px;">
+        <div class="field">
+          <label>스페셜 리롤 1회 비용(골드, 만)</label>
+          <input type="number" id="specialCost" min="0" value="300" />
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:8px;" id="goldCostRow"></div>
+      <div class="muted" style="margin-top:8px;">
+        골드 리롤 비용은 “어떤 옵션을 리롤하느냐”에 따라 다르다고 했으니, 옵션별로 입력받습니다.
+      </div>
+
+      <h3>4) 시뮬레이션 설정</h3>
+      <div class="row">
+        <div class="field">
+          <label>시뮬레이션 횟수</label>
+          <input type="number" id="trials" min="1000" step="1000" value="50000" />
+        </div>
+        <!-- <div class="field">
+          <label>랜덤 시드(선택)</label>
+          <input type="number" id="seed" min="0" placeholder="비우면 매번 랜덤" />
+        </div> -->
+      </div>
+
+      <div class="actions">
+        <button id="runBtn">시뮬레이션 실행</button>
+        <button class="secondary" id="resetBtn" type="button">기본값 리셋</button>
+        <span id="status" class="muted"></span>
+      </div>
+
+      <div style="margin-top:10px;">
+        <progress id="prog" value="0" max="1" style="display:none;"></progress>
+      </div>
+
+      <details style="margin-top:12px;">
+        <summary class="small">시뮬레이터가 사용하는 “전략(정책)” 설명</summary>
+        <div class="muted" style="margin-top:8px;">
+          이 계산기는 “목표 달성 확률↑”을 위해 매 시도마다 다음 규칙으로 리롤 대상을 고릅니다:
+          <ol style="margin:8px 0 0 18px;">
+            <li>아직 목표 미달 옵션 중, <b>현재값 대비 목표달성 1회 성공확률이 가장 큰</b> 옵션을 우선(= 한 번에 목표 도달 가능성이 큰 곳 먼저).</li>
+            <li>동률이면 <b>부족치(목표-현재)</b>가 큰 옵션 우선.</li>
+            <li>스페셜 리롤은 (사용 가능 시) <b>“부족치가 작아 마무리 단계”</b>인 옵션(부족치 ≤ 2)을 우선 사용.</li>
+            <li>일별 자원 소모 순서: <b>주말 무료 1회 → 포인트 리롤(가능한 만큼) → 스페셜 → 골드</b> (토글에 따라 제외)</li>
+          </ol>
+        </div>
+      </details>
+    </section>
+
+    <aside class="card">
+      <h2>결과</h2>
+
+      <div class="kpi">
+        <div class="box">
+          <div class="t">목표 달성 확률(추정)</div>
+          <div class="v" id="pSuccess">-</div>
+        </div>
+        <div class="box">
+          <div class="t">평균 총 비용(골드)</div>
+          <div class="v" id="avgCost">-</div>
+        </div>
+        <div class="box">
+          <div class="t">비용 중앙값(p50)</div>
+          <div class="v" id="p50Cost">-</div>
+        </div>
+        <div class="box">
+          <div class="t">비용 p90</div>
+          <div class="v" id="p90Cost">-</div>
+        </div>
+        <div class="box">
+          <div class="t">평균 포인트 리롤 사용횟수</div>
+          <div class="v" id="avgPointRolls">-</div>
+        </div>
+        <div class="box">
+          <div class="t">평균 주말 무료(무소모) 사용횟수</div>
+          <div class="v" id="avgWeekendFree">-</div>
+        </div>
+        <div class="box">
+          <div class="t">평균 골드 리롤 사용횟수</div>
+          <div class="v" id="avgGoldRolls">-</div>
+        </div>
+        <div class="box">
+          <div class="t">평균 스페셜 리롤 사용횟수</div>
+          <div class="v" id="avgSpecialRolls">-</div>
+        </div>
+      </div>
+
+      <div style="margin-top:12px;">
+        <h3>옵션별 달성률(추정)</h3>
+        <div class="muted">“최종적으로 각 옵션이 목표 이상인 비율”</div>
+        <div id="perOpt" style="margin-top:8px;"></div>
+      </div>
+
+      <div style="margin-top:12px;">
+        <h3>검증/경고</h3>
+        <div id="warnings"></div>
+      </div>
+
+      <div style="margin-top:12px;">
+        <h3>계산 요약</h3>
+        <div class="muted mono" id="summary"></div>
+      </div>
+    </aside>
+
+  </div>
+</main>
+
+<script>
+  // ---------- Config ----------
+  const OPTIONS = [
+    { name:"2콤보", cost:30, key: "A", min: 1, max: 10 },
+    { name:"3콤보",cost:45,key: "B", min: 1, max: 12 },
+    { name:"4콤보",cost:60,key: "C", min: 1, max: 15 },
+    { name:"5콤보",cost:100,key: "D", min: 1, max: 20 },
+    { name:"6콤보",cost:150,key: "E", min: 1, max: 30 },
+  ];
+
+  const DAILY_POINTS = 90;
+  const POINTS_PER_REROLL = 30;
+
+  // weekday baseline (Mon-Thu): gold 2 special 1, points rolls limited by points (no free extra)
+  // Fri/Sat/Sun add: weekendFree +1, gold +3, special +2
+  function isWeekendBonusDay(dateObj) {
+    // JS getDay(): 0 Sun, 1 Mon, ... 5 Fri, 6 Sat
+    const d = dateObj.getDay();
+    return (d === 0 || d === 5 || d === 6); // Sun/Fri/Sat
+  }
+
+  // ---------- DOM Build ----------
+  const optGrid = document.getElementById("optGrid");
+  const goldCostRow = document.getElementById("goldCostRow");
+
+  function buildUI() {
+    optGrid.innerHTML = "";
+    goldCostRow.innerHTML = "";
+
+    OPTIONS.forEach(o => {
+      const div = document.createElement("div");
+      div.className = "opt";
+      div.innerHTML = `
+        <b>${o.name} (${o.min}%~${o.max}%)</b>
+        <div class="row">
+          <div class="field" style="min-width:120px;">
+            <label>현재</label>
+            <input type="number" id="cur_${o.key}" min="${o.min}" max="${o.max}" value="${o.min}" />
+          </div>
+          <div class="field" style="min-width:120px;">
+            <label>목표</label>
+            <input type="number" id="tgt_${o.key}" min="${o.min}" max="${o.max}" value="${o.max}" />
+          </div>
+        </div>
+        <div class="muted">리롤 시 ${o.min}~${o.max} 자연수 균등</div>
+      `;
+      optGrid.appendChild(div);
+
+      const costField = document.createElement("div");
+      costField.className = "field";
+      costField.innerHTML = `
+        <label>골드 리롤 비용 (${o.name})</label>
+        <input type="number" id="goldCost_${o.key}" min="0" value=${o.cost} />
+      `;
+      goldCostRow.appendChild(costField);
+    });
+
+    // date defaults
+    const today = new Date();
+    const iso = today.toISOString().slice(0,10);
+    document.getElementById("startDate").value = iso;
+    document.getElementById("endDate").value = "2026-03-11";
+  }
+
+  buildUI();
+
+  document.getElementById("resetBtn").addEventListener("click", () => {
+    buildUI();
+    document.getElementById("startPoints").value = 0;
+    document.getElementById("reservePoints").value = 0;
+    document.getElementById("useGold").checked = true;
+    document.getElementById("useSpecial").checked = true;
+    document.getElementById("specialCost").value = 1000;
+    document.getElementById("trials").value = 50000;
+    document.getElementById("seed").value = "";
+    clearOutputs();
+  });
+
+  function clearOutputs() {
+    ["pSuccess","avgCost","p50Cost","p90Cost","avgPointRolls","avgWeekendFree","avgGoldRolls","avgSpecialRolls"]
+      .forEach(id => document.getElementById(id).textContent = "-");
+    document.getElementById("perOpt").innerHTML = "";
+    document.getElementById("warnings").innerHTML = "";
+    document.getElementById("summary").textContent = "";
+  }
+
+  // ---------- RNG (seedable) ----------
+  function mulberry32(seed) {
+    let t = seed >>> 0;
+    return function() {
+      t += 0x6D2B79F5;
+      let x = Math.imul(t ^ (t >>> 15), 1 | t);
+      x ^= x + Math.imul(x ^ (x >>> 7), 61 | x);
+      return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function randIntInclusive(rng, a, b) {
+    // inclusive [a,b]
+    const u = rng();
+    return a + Math.floor(u * (b - a + 1));
+  }
+
+  // ---------- Helpers ----------
+  function parseInputs() {
+    const cur = {};
+    const tgt = {};
+    const goldCost = {};
+    const warnings = [];
+
+    OPTIONS.forEach(o => {
+      const c = Number(document.getElementById(`cur_${o.key}`).value);
+      const t = Number(document.getElementById(`tgt_${o.key}`).value);
+      if (!Number.isFinite(c) || !Number.isFinite(t)) warnings.push(`${o.key}: 현재/목표가 숫자가 아닙니다.`);
+      if (c < o.min || c > o.max) warnings.push(`${o.key}: 현재값이 범위를 벗어났습니다.`);
+      if (t < o.min || t > o.max) warnings.push(`${o.key}: 목표값이 범위를 벗어났습니다.`);
+      cur[o.key] = clampInt(c, o.min, o.max);
+      tgt[o.key] = clampInt(t, o.min, o.max);
+
+      const gc = Number(document.getElementById(`goldCost_${o.key}`).value);
+      goldCost[o.key] = Number.isFinite(gc) && gc >= 0 ? gc : 0;
+    });
+
+    const startDate = document.getElementById("startDate").value;
+    const endDate = document.getElementById("endDate").value;
+    if (!startDate || !endDate) warnings.push("시작일/종료일을 입력하세요.");
+
+    const sp = Number(document.getElementById("startPoints").value);
+    const rp = Number(document.getElementById("reservePoints").value);
+    if (rp < 0) warnings.push("남겨야 할 포인트는 0 이상이어야 합니다.");
+    if (sp < 0) warnings.push("현재 포인트는 0 이상이어야 합니다.");
+    if (sp < rp) warnings.push("현재 포인트가 최소 잔액보다 작습니다. 포인트 리롤을 거의 못 할 수 있어요.");
+
+    const useGold = document.getElementById("useGold").checked;
+    const useSpecial = document.getElementById("useSpecial").checked;
+    const specialCost = Math.max(0, Number(document.getElementById("specialCost").value) || 0);
+
+    const trials = Math.max(1000, Number(document.getElementById("trials").value) || 50000);
+
+    // const seedRaw = document.getElementById("seed").value;
+    // const seed = seedRaw === "" ? null : (Number(seedRaw) >>> 0);
+    const seed = null;
+
+    return { cur, tgt, goldCost, startDate, endDate, startPoints: Math.max(0, sp||0), reservePoints: Math.max(0, rp||0),
+             useGold, useSpecial, specialCost, trials, seed, warnings };
+  }
+
+  function clampInt(x, lo, hi) {
+    x = Math.round(x);
+    return Math.min(hi, Math.max(lo, x));
+  }
+
+  function dateFromISO(iso) {
+    const [y,m,d] = iso.split("-").map(Number);
+    return new Date(y, m-1, d);
+  }
+
+  function formatPct(x) {
+    return (x*100).toFixed(3) + "%";
+  }
+
+  function formatNum(x) {
+    return x.toLocaleString("ko-KR");
+  }
+
+  function quantile(sortedArr, q) {
+    if (sortedArr.length === 0) return 0;
+    const pos = (sortedArr.length - 1) * q;
+    const base = Math.floor(pos);
+    const rest = pos - base;
+    if (sortedArr[base + 1] !== undefined) {
+      return sortedArr[base] + rest * (sortedArr[base + 1] - sortedArr[base]);
+    }
+    return sortedArr[base];
+  }
+
+  function allMet(state, tgt) {
+    return OPTIONS.every(o => state[o.key] >= tgt[o.key]);
+  }
+
+  // probability a NORMAL roll hits target in one attempt given target t, range [1..M]
+  function oneRollHitProb(t, maxVal) {
+    if (t <= 1) return 1;
+    if (t > maxVal) return 0;
+    return (maxVal - t + 1) / maxVal;
+  }
+
+  // choose which option to roll next for NORMAL roll (points/gold)
+  function chooseOptionForNormal(state, tgt) {
+    let best = null;
+    for (const o of OPTIONS) {
+      const k = o.key;
+      if (state[k] >= tgt[k]) continue;
+      const pHit = oneRollHitProb(tgt[k], o.max);
+      const deficit = tgt[k] - state[k];
+      const score = pHit * 1000 + deficit; // prioritize immediate chance to finish, then deficit
+      if (!best || score > best.score) best = { key: k, score };
+    }
+    return best ? best.key : null;
+  }
+
+  // choose which option to roll next for SPECIAL (max(current, roll))
+  function chooseOptionForSpecial(state, tgt) {
+    let best = null;
+    for (const o of OPTIONS) {
+      const k = o.key;
+      if (state[k] >= tgt[k]) continue;
+      const deficit = tgt[k] - state[k];
+      // "마무리" 우선: deficit 작은 애를 스페셜로 (확실히 올리고 유지)
+      // tie-break: still want options with higher chance to hit target
+      const pHit = oneRollHitProb(tgt[k], o.max);
+      // smaller deficit => higher score; cap at 2 is preferred
+      const finishBoost = deficit <= 2 ? 1000 : 0;
+      const score = finishBoost + (1/(deficit+1))*100 + pHit*50;
+      if (!best || score > best.score) best = { key: k, score };
+    }
+    return best ? best.key : null;
+  }
+
+  function rollNormal(rng, opt) {
+    return randIntInclusive(rng, opt.min, opt.max);
+  }
+
+  function rollSpecial(rng, opt, current) {
+    const v = randIntInclusive(rng, opt.min, opt.max);
+    return Math.max(current, v);
+  }
+
+  // ---------- Simulation Core ----------
+  function computeTotalBudgets(startISO, endISO, startPoints, reservePoints, useGold, useSpecial) {
+    const start = dateFromISO(startISO);
+    const end = dateFromISO(endISO);
+    if (end < start) return null;
+
+    let points = startPoints;
+    let weekendFreeTotal = 0;
+    let goldTotal = 0;
+    let specialTotal = 0;
+    let days = 0;
+
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate()+1)) {
+      days += 1;
+      points += DAILY_POINTS;
+
+      // weekend bonus day?
+      if (isWeekendBonusDay(d)) {
+        weekendFreeTotal += 1;
+        if (useGold) goldTotal += (2 + 3);
+        if (useSpecial) specialTotal += (1 + 2);
+      } else {
+        if (useGold) goldTotal += 2;
+        if (useSpecial) specialTotal += 1;
+      }
+    }
+
+    // points-based rolls: can spend points down to reservePoints
+    const spendable = Math.max(0, points - reservePoints);
+    const pointRollsTotal = Math.floor(spendable / POINTS_PER_REROLL);
+
+    return { days, totalPointsEnd: points, pointRollsTotal, weekendFreeTotal, goldTotal, specialTotal };
+  }
+
+  async function runSimulation() {
+    clearOutputs();
+    const inp = parseInputs();
+    const warnBox = document.getElementById("warnings");
+
+    if (inp.warnings.length) {
+      warnBox.innerHTML = inp.warnings.map(w => `<div class="warn">- ${w}</div>`).join("");
+    }
+
+    const budgets = computeTotalBudgets(inp.startDate, inp.endDate, inp.startPoints, inp.reservePoints, inp.useGold, inp.useSpecial);
+    if (!budgets) {
+      warnBox.innerHTML += `<div class="warn">- 종료일이 시작일보다 빠릅니다.</div>`;
+      return;
+    }
+
+    // quick sanity warning: if any target impossible
+    OPTIONS.forEach(o => {
+      const t = inp.tgt[o.key];
+      if (t > o.max) {
+        warnBox.innerHTML += `<div class="warn">- ${o.key} 목표 ${t}는 최대치 ${o.max}를 초과합니다(불가능).</div>`;
+      }
+    });
+
+    const runBtn = document.getElementById("runBtn");
+    const prog = document.getElementById("prog");
+    const status = document.getElementById("status");
+    runBtn.disabled = true;
+    prog.style.display = "block";
+    prog.value = 0;
+    prog.max = 1;
+    status.textContent = "시뮬레이션 준비 중…";
+
+    const rng = inp.seed == null ? Math.random : mulberry32(inp.seed);
+
+    const trials = inp.trials;
+
+    let successCount = 0;
+    const costs = new Array(trials);
+    const optMetCounts = { A:0, B:0, C:0, D:0, E:0 };
+
+    let sumPointRolls = 0;
+    let sumWeekendFree = 0;
+    let sumGoldRolls = 0;
+    let sumSpecialRolls = 0;
+    let sumCost = 0;
+
+    // We'll chunk to keep UI responsive
+    const CHUNK = Math.min(2000, Math.max(500, Math.floor(trials/50)));
+
+    // pre-read option configs
+    const optMap = {};
+    OPTIONS.forEach(o => optMap[o.key] = o);
+
+    // strategy for gold: pick option maximizing pHit / goldCost (and unmet)
+    function chooseOptionForGold(state, tgt, goldCost) {
+      let best = null;
+      for (const o of OPTIONS) {
+        const k = o.key;
+        if (state[k] >= tgt[k]) continue;
+        const pHit = oneRollHitProb(tgt[k], o.max);
+        const cost = goldCost[k] || 0;
+        const eff = cost === 0 ? (pHit * 1e9) : (pHit / cost);
+        const deficit = tgt[k] - state[k];
+        const score = eff * 1e6 + deficit;
+        if (!best || score > best.score) best = { key: k, score };
+      }
+      return best ? best.key : null;
+    }
+
+    function simulateOne() {
+      const state = { ...inp.cur };
+      let goldSpent = 0;
+
+      let pointRollsLeft = budgets.pointRollsTotal;
+      let weekendFreeLeft = budgets.weekendFreeTotal;
+      let goldLeft = budgets.goldTotal;
+      let specialLeft = budgets.specialTotal;
+
+      let usedPoint = 0, usedWf = 0, usedGold = 0, usedSp = 0;
+
+      // Apply rolls until we either meet target or run out of all resources
+      // Priority order: weekendFree -> point -> special -> gold
+      while (true) {
+        if (allMet(state, inp.tgt)) break;
+
+        // weekend free roll
+        if (weekendFreeLeft > 0) {
+          const k = chooseOptionForNormal(state, inp.tgt);
+          if (!k) break;
+          state[k] = rollNormal(rng, optMap[k]);
+          weekendFreeLeft--; usedWf++;
+          continue;
+        }
+
+        // point roll
+        if (pointRollsLeft > 0) {
+          const k = chooseOptionForNormal(state, inp.tgt);
+          if (!k) break;
+          state[k] = rollNormal(rng, optMap[k]);
+          pointRollsLeft--; usedPoint++;
+          continue;
+        }
+
+        // special roll
+        if (inp.useSpecial && specialLeft > 0) {
+          const k = chooseOptionForSpecial(state, inp.tgt) ?? chooseOptionForNormal(state, inp.tgt);
+          if (!k) break;
+          state[k] = rollSpecial(rng, optMap[k], state[k]);
+          specialLeft--; usedSp++;
+          goldSpent += inp.specialCost;
+          continue;
+        }
+
+        // gold roll
+        if (inp.useGold && goldLeft > 0) {
+          const k = chooseOptionForGold(state, inp.tgt, inp.goldCost) ?? chooseOptionForNormal(state, inp.tgt);
+          if (!k) break;
+          state[k] = rollNormal(rng, optMap[k]);
+          goldLeft--; usedGold++;
+          goldSpent += (inp.goldCost[k] || 0);
+          continue;
+        }
+
+        // no resources left
+        break;
+      }
+
+      const success = allMet(state, inp.tgt);
+      return { success, goldSpent, state, usedPoint, usedWf, usedGold, usedSp };
+    }
+
+    status.textContent = `시뮬레이션 진행 중… (0 / ${formatNum(trials)})`;
+
+    for (let i = 0; i < trials; i += CHUNK) {
+      const end = Math.min(trials, i + CHUNK);
+      for (let j = i; j < end; j++) {
+        const r = simulateOne();
+        if (r.success) successCount++;
+        costs[j] = r.goldSpent;
+        sumCost += r.goldSpent;
+
+        sumPointRolls += r.usedPoint;
+        sumWeekendFree += r.usedWf;
+        sumGoldRolls += r.usedGold;
+        sumSpecialRolls += r.usedSp;
+
+        // option-wise met at end (independent of success)
+        OPTIONS.forEach(o => { if (r.state[o.key] >= inp.tgt[o.key]) optMetCounts[o.key]++; });
+      }
+
+      prog.value = end / trials;
+      status.textContent = `시뮬레이션 진행 중… (${formatNum(end)} / ${formatNum(trials)})`;
+      // allow UI update
+      await new Promise(res => setTimeout(res, 0));
+    }
+
+    // compute outputs
+    const p = successCount / trials;
+    const avg = sumCost / trials;
+
+    costs.sort((a,b) => a-b);
+    const p50 = quantile(costs, 0.50);
+    const p90 = quantile(costs, 0.90);
+
+    document.getElementById("pSuccess").textContent = formatPct(p);
+    document.getElementById("avgCost").textContent = formatNum(Math.round(avg));
+    document.getElementById("p50Cost").textContent = formatNum(Math.round(p50));
+    document.getElementById("p90Cost").textContent = formatNum(Math.round(p90));
+
+    document.getElementById("avgPointRolls").textContent = (sumPointRolls / trials).toFixed(2);
+    document.getElementById("avgWeekendFree").textContent = (sumWeekendFree / trials).toFixed(2);
+    document.getElementById("avgGoldRolls").textContent = (sumGoldRolls / trials).toFixed(2);
+    document.getElementById("avgSpecialRolls").textContent = (sumSpecialRolls / trials).toFixed(2);
+
+    // per option met rate
+    const perOptDiv = document.getElementById("perOpt");
+    const rows = OPTIONS.map(o => {
+      const rate = optMetCounts[o.key] / trials;
+      return `<tr>
+        <td><b>${o.key}</b></td>
+        <td>${inp.cur[o.key]} → 목표 ${inp.tgt[o.key]} (범위 ${o.min}~${o.max})</td>
+        <td>${formatPct(rate)}</td>
+      </tr>`;
+    }).join("");
+    perOptDiv.innerHTML = `<table>
+      <thead><tr><th>옵션</th><th>입력</th><th>목표 이상 도달률</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+
+    // summary
+    const summary = document.getElementById("summary");
+    summary.textContent =
+`기간: ${inp.startDate} ~ ${inp.endDate} (총 ${budgets.days}일)
+포인트: 시작 ${formatNum(inp.startPoints)} / 종료 누적 ${formatNum(budgets.totalPointsEnd)} / 최소잔액 ${formatNum(inp.reservePoints)}
+포인트 리롤 가능 횟수(총): ${formatNum(budgets.pointRollsTotal)}회  (30pt/회)
+주말 무소모 추가 리롤(총): ${formatNum(budgets.weekendFreeTotal)}회 (금/토/일)
+골드 리롤(총): ${inp.useGold ? formatNum(budgets.goldTotal) : 0}회
+스페셜 리롤(총): ${inp.useSpecial ? formatNum(budgets.specialTotal) : 0}회
+시뮬 횟수: ${formatNum(trials)}회${inp.seed==null ? "" : ` (seed=${inp.seed})`}`;
+
+    status.textContent = "완료";
+    prog.style.display = "none";
+    runBtn.disabled = false;
+  }
+
+  document.getElementById("runBtn").addEventListener("click", () => {
+    runSimulation().catch(err => {
+      console.error(err);
+      document.getElementById("status").textContent = "에러 발생: " + err.message;
+      document.getElementById("runBtn").disabled = false;
+      document.getElementById("prog").style.display = "none";
+    });
+  });
+</script>
+</body>
+</html>
