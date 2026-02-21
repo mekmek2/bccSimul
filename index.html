@@ -136,7 +136,7 @@
             <li>아직 목표 미달 옵션 중, <b>현재값 대비 목표달성 1회 성공확률이 가장 큰</b> 옵션을 우선(= 한 번에 목표 도달 가능성이 큰 곳 먼저).</li>
             <li>동률이면 <b>부족치(목표-현재)</b>가 큰 옵션 우선.</li>
             <li>스페셜 리롤은 (사용 가능 시) <b>“부족치가 작아 마무리 단계”</b>인 옵션(부족치 ≤ 2)을 우선 사용.</li>
-            <li>일별 자원 소모 순서: <b>주말 무료 1회 → 포인트 리롤(가능한 만큼) → 스페셜 → 골드</b> (토글에 따라 제외)</li>
+            <li>일별 자원 소모 순서: <b>주말 무료 1회 → 포인트 리롤(가능한 만큼) → 골드 → 스페셜</b> (토글에 따라 제외)</li>
           </ol>
         </div>
       </details>
@@ -221,6 +221,16 @@
     return (d === 0 || d === 5 || d === 6); // Sun/Fri/Sat
   }
 
+  function dailyGoldLimit(dateObj) {
+  return isWeekendBonusDay(dateObj) ? 5 : 2;
+  }
+  function dailySpecialLimit(dateObj) {
+    return isWeekendBonusDay(dateObj) ? 3 : 1;
+  }
+  function dailyWeekendFreeLimit(dateObj) {
+    return isWeekendBonusDay(dateObj) ? 1 : 0; // 주말 무소모 1회/일
+  }
+  
   // ---------- DOM Build ----------
   const optGrid = document.getElementById("optGrid");
   const goldCostRow = document.getElementById("goldCostRow");
@@ -429,38 +439,32 @@
   }
 
   // ---------- Simulation Core ----------
-  function computeTotalBudgets(startISO, endISO, startPoints, reservePoints, useGold, useSpecial) {
-    const start = dateFromISO(startISO);
-    const end = dateFromISO(endISO);
-    if (end < start) return null;
+  function computeTotalBudgetsDisplay(startISO, endISO, startPoints, reservePoints, useGold, useSpecial) {
+  const start = dateFromISO(startISO);
+  const end = dateFromISO(endISO);
+  if (end < start) return null;
 
-    let points = startPoints;
-    let weekendFreeTotal = 0;
-    let goldTotal = 0;
-    let specialTotal = 0;
-    let days = 0;
+  let points = startPoints;
+  let weekendFreeTotal = 0;
+  let goldTotal = 0;
+  let specialTotal = 0;
+  let days = 0;
 
-    for (let d = new Date(start); d <= end; d.setDate(d.getDate()+1)) {
-      days += 1;
-      points += DAILY_POINTS;
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate()+1)) {
+    days += 1;
+    points += DAILY_POINTS;
 
-      // weekend bonus day?
-      if (isWeekendBonusDay(d)) {
-        weekendFreeTotal += 1;
-        if (useGold) goldTotal += (2 + 3);
-        if (useSpecial) specialTotal += (1 + 2);
-      } else {
-        if (useGold) goldTotal += 2;
-        if (useSpecial) specialTotal += 1;
-      }
-    }
-
-    // points-based rolls: can spend points down to reservePoints
-    const spendable = Math.max(0, points - reservePoints);
-    const pointRollsTotal = Math.floor(spendable / POINTS_PER_REROLL);
-
-    return { days, totalPointsEnd: points, pointRollsTotal, weekendFreeTotal, goldTotal, specialTotal };
+    if (isWeekendBonusDay(d)) weekendFreeTotal += 1;
+    if (useGold) goldTotal += dailyGoldLimit(d);
+    if (useSpecial) specialTotal += dailySpecialLimit(d);
   }
+
+  // "최대" 포인트 리롤 가능치 (실제 시뮬에선 목표 달성 시 더 적게 쓸 수 있음)
+  const spendable = Math.max(0, points - reservePoints);
+  const pointRollsMax = Math.floor(spendable / POINTS_PER_REROLL);
+
+  return { days, totalPointsEnd: points, pointRollsMax, weekendFreeTotal, goldTotal, specialTotal };
+}
 
   async function runSimulation() {
     clearOutputs();
@@ -471,7 +475,9 @@
       warnBox.innerHTML = inp.warnings.map(w => `<div class="warn">- ${w}</div>`).join("");
     }
 
-    const budgets = computeTotalBudgets(inp.startDate, inp.endDate, inp.startPoints, inp.reservePoints, inp.useGold, inp.useSpecial);
+    const budgets = computeTotalBudgetsDisplay(
+      inp.startDate, inp.endDate, inp.startPoints, inp.reservePoints, inp.useGold, inp.useSpecial
+    );
     if (!budgets) {
       warnBox.innerHTML += `<div class="warn">- 종료일이 시작일보다 빠릅니다.</div>`;
       return;
@@ -531,64 +537,75 @@
       return best ? best.key : null;
     }
 
-    function simulateOne() {
+    function simulateOneDaily() {
       const state = { ...inp.cur };
       let goldSpent = 0;
-
-      let pointRollsLeft = budgets.pointRollsTotal;
-      let weekendFreeLeft = budgets.weekendFreeTotal;
-      let goldLeft = budgets.goldTotal;
-      let specialLeft = budgets.specialTotal;
-
+    
+      let points = inp.startPoints;
+    
       let usedPoint = 0, usedWf = 0, usedGold = 0, usedSp = 0;
-
-      // Apply rolls until we either meet target or run out of all resources
-      // Priority order: weekendFree -> point -> special -> gold
-      while (true) {
+    
+      const start = dateFromISO(inp.startDate);
+      const end = dateFromISO(inp.endDate);
+    
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate()+1)) {
         if (allMet(state, inp.tgt)) break;
+    
+        // 매일 포인트 지급 (오늘 포함)
+        points += DAILY_POINTS;
+    
+        // 오늘치 소멸 자원(하루 단위로만 사용 가능)
+        let wfLeft = dailyWeekendFreeLimit(d);            // 금/토/일 1회
+        let goldLeft = inp.useGold ? dailyGoldLimit(d) : 0;      // 평일2 / 주말5
+        let spLeft = inp.useSpecial ? dailySpecialLimit(d) : 0;  // 평일1 / 주말3
+    
+        // 오늘 주어진 자원을 오늘 안에서만 사용
+        while (!allMet(state, inp.tgt)) {
+          // 1) 주말 무소모
+          if (wfLeft > 0) {
+            const k = chooseOptionForNormal(state, inp.tgt);
+            if (!k) break;
+            state[k] = rollNormal(rng, optMap[k]);
+            wfLeft--; usedWf++;
+            continue;
+          }
+    
+          // 2) 포인트 리롤 (최소 잔액 유지)
+          const spendableNow = Math.max(0, points - inp.reservePoints);
+          if (spendableNow >= POINTS_PER_REROLL) {
+            const k = chooseOptionForNormal(state, inp.tgt);
+            if (!k) break;
+            state[k] = rollNormal(rng, optMap[k]);
+            points -= POINTS_PER_REROLL;
+            usedPoint++;
+            continue;
+          }
 
-        // weekend free roll
-        if (weekendFreeLeft > 0) {
-          const k = chooseOptionForNormal(state, inp.tgt);
-          if (!k) break;
-          state[k] = rollNormal(rng, optMap[k]);
-          weekendFreeLeft--; usedWf++;
-          continue;
+          // 3) 골드 (오늘치만)
+          if (goldLeft > 0) {
+            const k = chooseOptionForGold(state, inp.tgt, inp.goldCost) ?? chooseOptionForNormal(state, inp.tgt);
+            if (!k) break;
+            state[k] = rollNormal(rng, optMap[k]);
+            goldLeft--; usedGold++;
+            goldSpent += (inp.goldCost[k] || 0);
+            continue;
+          }
+          
+          // 4) 스페셜 (오늘치만)
+          if (spLeft > 0) {
+            const k = chooseOptionForSpecial(state, inp.tgt) ?? chooseOptionForNormal(state, inp.tgt);
+            if (!k) break;
+            state[k] = rollSpecial(rng, optMap[k], state[k]);
+            spLeft--; usedSp++;
+            goldSpent += inp.specialCost;
+            continue;
+          }
+          
+          // 오늘 더 할 수 있는 게 없음
+          break;
         }
-
-        // point roll
-        if (pointRollsLeft > 0) {
-          const k = chooseOptionForNormal(state, inp.tgt);
-          if (!k) break;
-          state[k] = rollNormal(rng, optMap[k]);
-          pointRollsLeft--; usedPoint++;
-          continue;
-        }
-
-        // special roll
-        if (inp.useSpecial && specialLeft > 0) {
-          const k = chooseOptionForSpecial(state, inp.tgt) ?? chooseOptionForNormal(state, inp.tgt);
-          if (!k) break;
-          state[k] = rollSpecial(rng, optMap[k], state[k]);
-          specialLeft--; usedSp++;
-          goldSpent += inp.specialCost;
-          continue;
-        }
-
-        // gold roll
-        if (inp.useGold && goldLeft > 0) {
-          const k = chooseOptionForGold(state, inp.tgt, inp.goldCost) ?? chooseOptionForNormal(state, inp.tgt);
-          if (!k) break;
-          state[k] = rollNormal(rng, optMap[k]);
-          goldLeft--; usedGold++;
-          goldSpent += (inp.goldCost[k] || 0);
-          continue;
-        }
-
-        // no resources left
-        break;
       }
-
+    
       const success = allMet(state, inp.tgt);
       return { success, goldSpent, state, usedPoint, usedWf, usedGold, usedSp };
     }
@@ -598,7 +615,7 @@
     for (let i = 0; i < trials; i += CHUNK) {
       const end = Math.min(trials, i + CHUNK);
       for (let j = i; j < end; j++) {
-        const r = simulateOne();
+        const r = simulateOneDaily();
         if (r.success) successCount++;
         costs[j] = r.goldSpent;
         sumCost += r.goldSpent;
@@ -654,13 +671,13 @@
     // summary
     const summary = document.getElementById("summary");
     summary.textContent =
-`기간: ${inp.startDate} ~ ${inp.endDate} (총 ${budgets.days}일)
-포인트: 시작 ${formatNum(inp.startPoints)} / 종료 누적 ${formatNum(budgets.totalPointsEnd)} / 최소잔액 ${formatNum(inp.reservePoints)}
-포인트 리롤 가능 횟수(총): ${formatNum(budgets.pointRollsTotal)}회  (30pt/회)
-주말 무소모 추가 리롤(총): ${formatNum(budgets.weekendFreeTotal)}회 (금/토/일)
-골드 리롤(총): ${inp.useGold ? formatNum(budgets.goldTotal) : 0}회
-스페셜 리롤(총): ${inp.useSpecial ? formatNum(budgets.specialTotal) : 0}회
-시뮬 횟수: ${formatNum(trials)}회${inp.seed==null ? "" : ` (seed=${inp.seed})`}`;
+`기간: ${inp.startDate} ~ ${inp.endDate} (총 ${disp.days}일)
+포인트: 시작 ${formatNum(inp.startPoints)} / 종료일까지 누적 ${formatNum(disp.totalPointsEnd)} / 최소잔액 ${formatNum(inp.reservePoints)}
+포인트 리롤(최대 가능치): ${formatNum(disp.pointRollsMax)}회 (30pt/회)  ※ 실제는 목표 달성 시 더 적게 씀
+주말 무소모(총): ${formatNum(disp.weekendFreeTotal)}회 (금/토/일 1회/일, 소멸)
+골드 리롤(총): ${inp.useGold ? formatNum(disp.goldTotal) : 0}회 (일일 제한, 소멸)
+스페셜 리롤(총): ${inp.useSpecial ? formatNum(disp.specialTotal) : 0}회 (일일 제한, 소멸)
+시뮬 횟수: ${formatNum(trials)}회`;
 
     status.textContent = "완료";
     prog.style.display = "none";
