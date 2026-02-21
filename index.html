@@ -475,10 +475,10 @@
       warnBox.innerHTML = inp.warnings.map(w => `<div class="warn">- ${w}</div>`).join("");
     }
 
-    const budgets = computeTotalBudgetsDisplay(
+    const disp = computeTotalBudgetsDisplay(
       inp.startDate, inp.endDate, inp.startPoints, inp.reservePoints, inp.useGold, inp.useSpecial
     );
-    if (!budgets) {
+    if (!disp) {
       warnBox.innerHTML += `<div class="warn">- 종료일이 시작일보다 빠릅니다.</div>`;
       return;
     }
